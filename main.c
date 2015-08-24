@@ -12,7 +12,7 @@
 #define STOP_CONDITION ("50.000 fitness calls OR optimum achived")
 #define MUTATION ("+/- 0.01")
 
-#define DIM 90
+#define DIM 2
 #define C1 20.0
 #define C2 0.20
 #define C3 2.0*M_PI
@@ -38,6 +38,12 @@ typedef struct roulleteStruct {
 //function to specify the type of parent selection
 typedef void (*ParentSelectionFunction)(Chrom *, Chrom *);
 
+//function to specify the type of crossover
+typedef void (*CrossoverFunction)(Chrom *, Chrom *);
+
+//function to specify the type of crossover
+typedef void (*MutationFunction)(Chrom *);
+
 //calculates the ackley's function
 double ackleysFunction(double *x, double c1, double c2, double c3){
 	int i;
@@ -59,11 +65,10 @@ int compareChrom(const void *a, const void *b){
 }
 
 //roullete type classification
-void roulleteFitness(Chrom *parents, Chrom *chroms){
-	int i, j, k;
+void roulleteSelection(Chrom *parents, Chrom *chroms){
+	int i, j;
 	double last = 0.0;
 	double r;
-	Chrom parent[2];
 	RoulleteStruct *roullete = NULL;
 	
 	//creating the roullete
@@ -73,47 +78,46 @@ void roulleteFitness(Chrom *parents, Chrom *chroms){
 	
 	//5 - fitness -> the lowest the fitness, the closest to zero that gene got, then the roullete value will be biger for him
 	for(i = 0; i < POPULATION_SIZE; i++){
-		roullete[i + 1].value = last + (5 - fabs(parents[i].fitness));
-		roullete[i].chrom = parents[i];
-		last += 5 - fabs(parents[i].fitness);
+		roullete[i + 1].value = last + (5 - fabs(chroms[i].fitness));
+		roullete[i].chrom = chroms[i];
+		last += 5 - fabs(chroms[i].fitness);
 	}
 	 
-	for(i = 0; i < POPULATION_SIZE - 1; i++){
+	for(i = 0; i < 2*POPULATION_SIZE; i++){
 		r = RAND_DOUBLE(last);
-		
+
 		//CAN BE OVERWRITED BY BINARY SEARCH
 		//selecting the parents
-		for(j = 0, k = 0; j < POPULATION_SIZE && k < 2; j++){
+		for(j = 0; j < POPULATION_SIZE; j++){
 			if(r > roullete[j].value && r <= roullete[j + 1].value){
-				parent[k] = roullete[j].chrom;
-				j = 0;
-				k++;
-				r = RAND_DOUBLE(last);
+				parents[i] = roullete[j].chrom;
+				break;
+				//r = RAND_DOUBLE(last);
 			}
 		}
-
-		if(RAND_DOUBLE(100) <= CROSSOVER_RATE){	
-		//assign new value to the offspring
-			for(k = 0; k < DIM; k++)
-				chroms[i].genes[k] = chroms[i + 1].genes[k] = (parent[0].genes[k] + parent[1].genes[k])/2.0;
-
-			i++;
-		}
-		//crossover didnt happened, both chromossomes pass to the next generation without modifications
-		else{
-			chroms[i++] = parent[0];
-			
-			if(i < POPULATION_SIZE)
-				chroms[i++] = parent[1];
-		}
-		
 	}
 	
 	free(roullete);
 }
 
+void averageBetweenParentsCrossover(Chrom *parent, Chrom *chroms){
+	int i, k;
+	
+	for(i = 0; i < POPULATION_SIZE; i++){
+		if(RAND_DOUBLE(100) <= CROSSOVER_RATE){	
+			//assign new value to the offspring
+			for(k = 0; k < DIM; k++)
+				chroms[i].genes[k] = (parent[i].genes[k] + parent[i + POPULATION_SIZE - 1].genes[k])/2.0;
+			}
+		//crossover didnt happened, both chromossomes pass to the next generation without modifications
+		else
+			chroms[i] = parent[i];
+	
+	}
+}
+
 //aplies mutation to the genes
-void mutation(Chrom *chroms){
+void sumMutation(Chrom *chroms){
 	int i, k;
 
 	for(i = 0; i < POPULATION_SIZE; i++){
@@ -127,19 +131,19 @@ void mutation(Chrom *chroms){
 
 //creates a new generation
 
-void createGeneration(Chrom *chroms, ParentSelectionFunction f){
+void createGeneration(Chrom *chroms, ParentSelectionFunction f, CrossoverFunction c, MutationFunction m){
 	Chrom *parents = NULL;
 
-	parents = (Chrom *) malloc(sizeof(Chrom) * POPULATION_SIZE);
+	parents = (Chrom *) malloc(sizeof(Chrom) * 2 * POPULATION_SIZE);
 	
-	//creating parents	
-	memcpy(parents, chroms, POPULATION_SIZE*sizeof(Chrom));
-	
-	//selecting parents/creating offspring/crossover
+	//selecting parents
 	f(parents, chroms);
 
+	//crossover
+	c(parents, chroms);
+
 	//mutating offspring
-	mutation(chroms);
+	m(chroms);
 	
 	free(parents);
 }
@@ -203,7 +207,9 @@ int main(int argc, char *argv[]){
 
 		for(i = 0; i < POPULATION_SIZE; i++){
 			chroms[i].fitness = ackleysFunction(chroms[i].genes, C1, C2, C3);
-				
+		
+			//printf("%lf %lf %lf\n", chroms[i].genes[0], chroms[i].genes[1], chroms[i].fitness);
+
 			if(fabs(chroms[i].fitness) < fabs(best)){
 				best = chroms[i].fitness;
 				chromBest = chroms[i];
@@ -230,10 +236,8 @@ int main(int argc, char *argv[]){
 			best = INT_MAX;
 		}
 		
-		//printGeneration(chroms);
-
 		//starts a new generation to try to minimize the function
-		createGeneration(chroms, roulleteFitness);
+		createGeneration(chroms, roulleteSelection, averageBetweenParentsCrossover, sumMutation);
 	}
 
 	printf("Best overall result: %lf\n **Genes**\n " , globalBest);
