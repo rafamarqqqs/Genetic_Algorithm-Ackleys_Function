@@ -10,7 +10,7 @@
 #define INITIALIZATION_TYPE ("Aleatory")
 #define STOP_CONDITION (" fitness calls OR optimum achived")
 
-#define DIM 20
+#define DIM 10
 #define C1 20.0
 #define C2 0.20
 #define C3 2.0*M_PI
@@ -42,6 +42,16 @@ typedef void (*CrossoverFunction)(Chrom *, Chrom *);
 //function to specify the type of mutation 
 typedef void (*MutationFunction)(Chrom *);
 
+void printGeneration(Chrom *chroms){
+	int i, j;
+
+	for(i = 0; i < POPULATION_SIZE; i++){
+		for(j = 0; j < DIM; j++)
+			printf("%lf ", chroms[i].genes[j]);
+		printf("\n");
+	}
+}
+
 //calculates the ackley's function
 double ackleysFunction(double *x, double c1, double c2, double c3){
 	int i;
@@ -70,19 +80,19 @@ void roulleteSelection(Chrom *parents, Chrom *chroms){
 	
 	//5 - fitness -> the lowest the fitness, the closest to zero that gene got, then the roullete space will be biger for him
 	for(i = 0; i < POPULATION_SIZE; i++){
-		roullete[i + 1].value = last + (5 - fabs(chroms[i].fitness));
+		roullete[i + 1].value = last + (INT_MAX - fabs(chroms[i].fitness));
 		roullete[i].chrom = chroms[i];
-		last += 5 - fabs(chroms[i].fitness);
+		last += INT_MAX - fabs(chroms[i].fitness);
 	}
-	 
-	for(i = 0; i < 2*POPULATION_SIZE; i++){
+
+	for(i = 0; i < POPULATION_SIZE; i++){
 		r = RAND_DOUBLE(last);
 
 		//CAN BE OVERWRITED BY BINARY SEARCH
 		//selecting the parents
 		for(j = 0; j < POPULATION_SIZE; j++){
-			if(r >= roullete[j].value && r < roullete[j + 1].value){
-				parents[i] = roullete[j].chrom;
+			if(r > roullete[j].value && r <= roullete[j + 1].value){
+				memcpy(&(parents[i]), &(roullete[j].chrom), sizeof(Chrom));
 				break;
 			}
 		}
@@ -98,12 +108,11 @@ void averageBetweenParentsCrossover(Chrom *parent, Chrom *chroms){
 		if(RAND_DOUBLE(100) <= CROSSOVER_RATE){	
 			//assign new value to the offspring
 			for(k = 0; k < DIM; k++)
-				chroms[i].genes[k] = (parent[i].genes[k] + parent[i + POPULATION_SIZE].genes[k])/2.0;
+				chroms[i].genes[k] = (parent[i].genes[k] + parent[i + 1].genes[k])/2.0;
 		}
 		//crossover didnt happened, both chromossomes pass to the next generation without modifications
 		else
-			chroms[i] = parent[i];
-	
+			chroms[i] = rand() % 2 == 0 ? parent[i] : parent[i + 1];
 	}
 }
 
@@ -117,22 +126,17 @@ void sumMutation(Chrom *chroms){
 				chroms[i].genes[k] += rand()%2 == 0 ? MUTATION_SIZE : (-1.0)*MUTATION_SIZE;
 		}
 	}
-
 }
 
 //creates a new generation
 void createGeneration(Chrom *chroms, ParentSelectionFunction f, CrossoverFunction c, MutationFunction m){
 	Chrom *parents = NULL;
-	Chrom *oldGeneration = NULL;
 
 	//two parents for each child (can be generalized)
-	parents = (Chrom *) malloc(sizeof(Chrom) * 2 * POPULATION_SIZE);
-	oldGeneration = (Chrom *) malloc(sizeof(Chrom) * POPULATION_SIZE);
-	
-	memcpy(oldGeneration, parents, sizeof(Chrom) * POPULATION_SIZE);
-	 
+	parents = (Chrom *) malloc(sizeof(Chrom) * POPULATION_SIZE);
+
 	//selecting parents
-	f(parents, oldGeneration);
+	f(parents, chroms);
 
 	//crossover
 	c(parents, chroms);
@@ -141,7 +145,6 @@ void createGeneration(Chrom *chroms, ParentSelectionFunction f, CrossoverFunctio
 	m(chroms);
 	
 	free(parents);
-	free(oldGeneration);
 }
 
 //randomly creates a initial population
@@ -162,16 +165,6 @@ Chrom *generateInitialPopulation(Chrom *chroms){
 	}
 
 	return chroms;
-}
-
-void printGeneration(Chrom *chroms){
-	int i, j;
-
-	for(i = 0; i < POPULATION_SIZE; i++){
-		for(j = 0; j < DIM; j++)
-			printf("%lf ", chroms[i].genes[j]);
-		printf("\n");
-	}
 }
 
 void printInformations(Chrom *chroms){
@@ -204,8 +197,6 @@ int main(int argc, char *argv[]){
 
 		for(i = 0; i < POPULATION_SIZE; i++){
 			chroms[i].fitness = ackleysFunction(chroms[i].genes, C1, C2, C3);
-		
-			//printf("%lf %lf %lf\n", chroms[i].genes[0], chroms[i].genes[1], chroms[i].fitness);
 
 			if(fabs(chroms[i].fitness) < fabs(best)){
 				best = chroms[i].fitness;
@@ -228,7 +219,7 @@ int main(int argc, char *argv[]){
 			globalChromBest = chromBest;
 		}
 
-		if(counter%100 == 0){	
+		if(counter%1000 == 0){	
 			printf("Best result at generation %d: %lf\n", counter, best);
 			best = INT_MAX;
 		}
